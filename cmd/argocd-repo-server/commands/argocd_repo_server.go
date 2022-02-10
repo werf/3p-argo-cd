@@ -18,6 +18,7 @@ import (
 	"github.com/argoproj/argo-cd/v2/common"
 	"github.com/argoproj/argo-cd/v2/reposerver"
 	"github.com/argoproj/argo-cd/v2/reposerver/apiclient"
+	"github.com/argoproj/argo-cd/v2/reposerver/askpass"
 	reposervercache "github.com/argoproj/argo-cd/v2/reposerver/cache"
 	"github.com/argoproj/argo-cd/v2/reposerver/metrics"
 	"github.com/argoproj/argo-cd/v2/reposerver/repository"
@@ -90,6 +91,7 @@ func NewCommand() *cobra.Command {
 			cache, err := cacheSrc()
 			errors.CheckError(err)
 
+			askPassServer := askpass.NewServer()
 			metricsServer := metrics.NewMetricsServer()
 			cacheutil.CollectMetrics(redisClient, metricsServer)
 			server, err := reposerver.NewServer(metricsServer, cache, tlsConfigCustomizer, repository.RepoServerInitConstants{
@@ -97,7 +99,7 @@ func NewCommand() *cobra.Command {
 				PauseGenerationAfterFailedGenerationAttempts: getPauseGenerationAfterFailedGenerationAttempts(),
 				PauseGenerationOnFailureForMinutes:           getPauseGenerationOnFailureForMinutes(),
 				PauseGenerationOnFailureForRequests:          getPauseGenerationOnFailureForRequests(),
-			})
+			}, askPassServer)
 			errors.CheckError(err)
 
 			grpc := server.CreateGRPC()
@@ -128,6 +130,7 @@ func NewCommand() *cobra.Command {
 			})
 			http.Handle("/metrics", metricsServer.GetHandler())
 			go func() { errors.CheckError(http.ListenAndServe(fmt.Sprintf(":%d", metricsPort), nil)) }()
+			go func() { errors.CheckError(askPassServer.Run(askpass.SocketPath)) }()
 
 			if gpg.IsGPGEnabled() {
 				log.Infof("Initializing GnuPG keyring at %s", common.GetGnuPGHomePath())
